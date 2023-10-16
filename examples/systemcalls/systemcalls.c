@@ -17,7 +17,23 @@ bool do_system(const char *cmd)
  *   or false() if it returned a failure
 */
 
-    return true;
+   int status = system(cmd);  // Store the return value of system() in a variable
+
+    if (status == -1) {
+        // An error occurred when invoking the system() call
+        return false;
+    } else {
+        // The system() call was successful; check the exit status of the command
+        if (WIFEXITED(status)) {
+            // The command executed and returned an exit status
+            int exit_status = WEXITSTATUS(status);
+            return exit_status == 0;  // Return true if exit status is 0 (success)
+        } else {
+            // The command was terminated abnormally
+            return false;
+        }
+    }
+
 }
 
 /**
@@ -57,11 +73,43 @@ bool do_exec(int count, ...)
  *   (first argument to execv), and use the remaining arguments
  *   as second argument to the execv() command.
  *
+
+
+
+    char* comm[count];
+    for(i=0; i<count; i++)
+    {
+        comm[i] = command[i+1];
+    }
+    comm[count-1] = NULL;
 */
+        pid_t pid;
+        int status;
+	fflush(stdout);
+	pid = fork();
+        if (pid <0 )
+                return false;
+        else if(pid==0){
+                execv(command[0],command);
+		exit(1);
+	}
+	else{
+	if (waitpid(pid, &status, 0) == -1)
+		return false;
+	else if (WIFEXITED(status)){
+		//return WEXITSTATUS (status);
+	    int exit_status = WEXITSTATUS(status);
+            if (exit_status == 0) {
+                return true; // Command executed successfully
+            } else {
+                return false; // Command returned a non-zero exit status
+            }
+        } else {
+            return false; // Command didn't exit normally
+        }
 
-    va_end(args);
 
-    return true;
+       }
 }
 
 /**
@@ -91,9 +139,86 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   redirect standard out to a file specified by outputfile.
  *   The rest of the behaviour is same as do_exec()
  *
+*
+       char* comm[count];
+    for(i=0; i<count; i++)
+    {
+        comm[i] = command[i+1];
+    }
+    comm[count-1] = NULL;
+*
+
+	pid_t pid;
+	pid = fork();
+	if (pid == -1)
+		return -1;
+	else if(pid==0){
+		execv(command[0],command);
+		exit(1);
+	}
+*
+
+int kidpid;
+int fd = open("redirected.txt", O_WRONLY|O_TRUNC|O_CREAT, 0644);
+if (fd < 0) { perror("open"); abort(); }
+switch (kidpid = fork()) {
+  case -1: perror("fork"); abort();
+  case 0:
+    if (dup2(fd, 1) < 0) { perror("dup2"); abort(); }
+    close(fd);
+    execvp(command[0], command); perror("execvp"); abort();
+  default:
+    close(fd);
+}
+
 */
 
-    va_end(args);
 
-    return true;
+
+
+
+	pid_t pid;
+	int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+	if (fd < 0) { perror("open"); return false; }
+
+        int status;
+        fflush(stdout);
+	pid = fork();
+        if (pid <0 ){
+		close(fd);
+                return false;
+	}
+        else if(pid==0){
+		if (dup2(fd, 1) < 0) {
+			perror("dup2");
+			close(fd);
+			exit(1);
+		 }
+		close(fd);
+	        execv(command[0],command);
+                exit(1);
+        }
+	else{
+
+		if (waitpid(pid, &status, 0) == -1){
+			close(fd);
+                	return false;
+		}
+       		else if (WIFEXITED(status)){
+                	//return WEXITSTATUS (status);
+            		close(fd);
+			int exit_status = WEXITSTATUS(status);
+            		if (exit_status == 0) {
+                		return true; // Command executed successfully
+            		} else {
+                		return false; // Command returned a non-zero exit status
+            		}
+        	}
+		else {
+			close(fd);
+            		return false; // Command didn't exit normally
+        	}
+	}
+
 }
+
